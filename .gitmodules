@@ -1,0 +1,3 @@
+[submodule "MolForge"]
+	path = MolForge
+	url = https://github.com/knu-lcbc/MolForge.git
