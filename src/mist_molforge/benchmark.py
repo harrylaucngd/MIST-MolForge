@@ -17,18 +17,35 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import rdMolDescriptors
 from tqdm import tqdm
 
+# Allow `python src/mist_molforge/benchmark.py ...` from the repo root.
+if __package__ in {None, ""}:
+    import sys
+
+    SRC_ROOT = Path(__file__).resolve().parents[1]
+    if str(SRC_ROOT) not in sys.path:
+        sys.path.insert(0, str(SRC_ROOT))
+
 from mist.data.datasets import SpectraMolDataset, get_paired_loader, get_paired_spectra
 from mist.data.featurizers import get_paired_featurizer
 from mist.data.splitter import PresetSpectraSplitter
 from mist.models.spectra_encoder import SpectraEncoderGrowing
 
-from .chem_utils import (
-    compute_morgan_fingerprint,
-    compute_tanimoto_similarity,
-    normalize_formula,
-)
-from .metrics import aggregate_metrics, compute_metrics_for_one
-from .molforge_adapter import MolForgeDecoder
+if __package__ in {None, ""}:
+    from mist_molforge.chem_utils import (
+        compute_morgan_fingerprint,
+        compute_tanimoto_similarity,
+        normalize_formula,
+    )
+    from mist_molforge.metrics import aggregate_metrics, compute_metrics_for_one
+    from mist_molforge.molforge_adapter import MolForgeDecoder
+else:
+    from .chem_utils import (
+        compute_morgan_fingerprint,
+        compute_tanimoto_similarity,
+        normalize_formula,
+    )
+    from .metrics import aggregate_metrics, compute_metrics_for_one
+    from .molforge_adapter import MolForgeDecoder
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -98,7 +115,7 @@ def parse_args():
     )
     parser.add_argument("--split", type=str, default="test", choices=["val", "test"])
     parser.add_argument("--max-spectra", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument(
         "--device",
         type=str,
