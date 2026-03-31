@@ -25,7 +25,7 @@ On the MassSpecGym test set:
 | Model | MIST Tanimoto ↑ | Top-1 Acc ↑ | Top-1 Tan ↑ | Top-10 Acc ↑ | Top-10 Tan ↑ |
 |---|---|---|---|---|---|
 | MIST + MolForge (corrected) | 0.457 | 10.73% | 0.37 | 14.48% | 0.41 |
-| *MIST + MolForge (inflated, batch size=24)* | *0.782* | *31.75%* | *0.68* | *40.55%* | *0.74* |
+| *MIST + MolForge (inflated, batch size=24)* | *0.812* | *31.75%* | *0.68* | *40.55%* | *0.74* |
 
 To reproduce the **corrected** results, either run with `batch size = 1` or use the corrected masking logic in `src/mist/models/transformer_layer.py`. To reproduce the **inflated** results, use the buggy masking behavior together with batched inference at the default setting `--batch-size 24`. In practice, toggling between the buggy and corrected masking implementations while changing batch size produces materially different results.
 
