@@ -1,35 +1,85 @@
 # MIST-MolForge
 
-`MIST-MolForge` is a minimal benchmark repository for:
+This repository provides a minimal, self-contained implementation for reproducing the results of **"One Small Step with Fingerprints, One Giant Leap for De Novo Molecule Generation from Mass Spectra"** ([Neo et al., 2025](https://arxiv.org/abs/2508.04180)), which combines the [MIST](https://github.com/samgoldman97/mist) spectrum-to-fingerprint encoder with the [MolForge](https://github.com/knu-lcbc/MolForge) fingerprint-to-molecule decoder for de novo molecular structure elucidation from tandem mass spectra.
 
-- MIST spectrum-to-fingerprint prediction
-- thresholding the predicted 4096-bit fingerprint into discrete on-bits
-- upstream MolForge decoding from fingerprint tokens to molecules
-- benchmarking on MassSpecGym and CANOPUS
+Specifically, this repo reproduces **both** the originally reported (buggy) results and the corrected results after fixing a critical batched-inference bug in the MIST encoder.
 
-This repo is intentionally narrow. It keeps only the code needed for the
-MIST -> thresholded fingerprint -> MolForge -> benchmark path.
+The pipeline is:
+1. MIST encoder: mass spectrum → 4096-bit molecular fingerprint probabilities
+2. Thresholding: probabilities → discrete on-bits
+3. MolForge decoder: fingerprint tokens → SMILES molecules
+4. Evaluation on [MassSpecGym](https://github.com/pluskal-lab/MassSpecGym) and CANOPUS (NPLIB1)
 
-## Layout
+## Known Issue: MIST Batched Inference Bug
 
-- `src/mist/`: retained MIST encoder and benchmark data-loading code
-- `src/mist_molforge/`: thin integration layer for benchmark orchestration, chemistry helpers, metrics, and the MolForge adapter
-- `MolForge/`: upstream MolForge repository, tracked as a git submodule
-- `configs/`: MSG and CANOPUS benchmark configs
-- `checkpoints/`: local MIST checkpoints, MolForge checkpoint, and SentencePiece models
+This repository documents and reproduces a **batched-inference bug** in the MIST encoder. The issue is in the padding-mask handling inside `src/mist/models/transformer_layer.py`. In the corrected implementation, the attention mask is first converted into an additive `-inf` mask before being applied to the attention logits; see the current logic at lines 446-448 and 505-507:
+`new_attn_mask = torch.zeros_like(attn_mask, dtype=q.dtype)`,
+`new_attn_mask.masked_fill_(attn_mask, float("-inf"))`, and then `attn += new_attn_mask`.
 
-There is no separate `scripts/` wrapper anymore. The package entrypoint is the
-only benchmark interface.
+In the original buggy implementation used in DiffMS-style MIST inference, the masking was applied as `attn += attn_mask`, which adds `0/1` values rather than properly suppressing padded positions. This bug is mostly dormant when inference is run with `batch size = 1`, because the attention mask is effectively a no-op in that setting. We believe MIST + MolForge directly reused the DiffMS MIST implementation, but unlike DiffMS they ran inference with `batch size > 1`, which activates the bug and creates cross-sample leakage. As a result, shorter spectra in a batch can attend to padding tokens and their representations collapse toward the longest spectrum in the batch, inflating reported metrics.
 
-## Upstream Provenance
+### Quantitative Impact
 
-The `MolForge/` directory is intended to remain an upstream submodule from
-[knu-lcbc/MolForge](https://github.com/knu-lcbc/MolForge.git). The integration
-layer in this repo uses upstream MolForge model code and beam search rather
-than maintaining a separate local reimplementation.
+On the MassSpecGym test set:
 
-Upstream reference:
-[MolForge upstream](https://github.com/knu-lcbc/MolForge.git)
+| Model | MIST Tanimoto ↑ | Top-1 Acc ↑ | Top-1 Tan ↑ | Top-10 Acc ↑ | Top-10 Tan ↑ |
+|---|---|---|---|---|---|
+| MIST + MolForge (corrected) | 0.457 | 10.73% | 0.37 | 14.48% | 0.41 |
+| *MIST + MolForge (buggy, batch size=128)* | *0.780* | *27.49%* | *0.66* | *37.43%* | *0.73* |
+
+To reproduce the **corrected** results, either run with `batch size = 1` or use the corrected masking logic in `src/mist/models/transformer_layer.py`. To reproduce the **buggy** results as originally reported, use the buggy masking behavior together with batched inference (for example `--batch-size 128`). In practice, toggling between the buggy and corrected masking implementations while changing batch size produces materially different results.
+
+## Data and Model Artifacts
+
+### MIST Encoder Checkpoints
+
+The pre-trained MIST encoder checkpoints for MassSpecGym and NPLIB1 (CANOPUS) are consistent with those used by [DiffMS](https://arxiv.org/abs/2502.09571) (Bohde et al., 2025) and are hosted on Zenodo:
+
+> **Download:** [https://zenodo.org/records/15122968](https://zenodo.org/records/15122968)
+
+From the archive, extract `mist_msg.pt` and `mist_canopus.pt` into the `checkpoints/` directory.
+
+### Datasets
+
+The MassSpecGym and CANOPUS datasets need to be in a specific format that includes subformulae assignments for the MIST encoder. These pre-processed datasets can be obtained by running the data preparation scripts from the [DiffMS repository](https://github.com/coleygroup/DiffMS):
+
+```bash
+# Clone the DiffMS repo
+git clone https://github.com/coleygroup/DiffMS.git
+cd DiffMS
+
+# Download and prepare CANOPUS (NPLIB1) data
+bash data_processing/01_download_canopus_data.sh
+
+# Download and prepare MassSpecGym data
+bash data_processing/02_download_msg_data.sh
+```
+
+After preparation, the resulting `data/canopus/` and `data/msg/` directories should each contain:
+- `labels.tsv`
+- Split TSV files
+- `spec_files/*.ms`
+- Precomputed subformula JSON files
+
+Update the paths in the config files under `configs/` to point to your local data directories.
+
+### MolForge Decoder Checkpoint and SentencePiece Models
+
+The MolForge decoder checkpoint (`decoder_molforge.pth`) and SentencePiece vocabulary models are also hosted on OSF (Open Science Framework). For anonymous release/review, we create the anonimized link below:
+
+> **Download (anonymized):** [MolForge Decoder](https://osf.io/dqcwm/overview?view_only=17065170fb0e4a98a64f6d1ae6a5bd8f)
+
+After downloading, place the files under `checkpoints/` as follows:
+
+```
+checkpoints/
+  mist_msg.pt
+  mist_canopus.pt
+  decoder_molforge.pth
+  molforge_sp/
+    combined_morgan4096_vocab_sp.model
+    combined_smiles_vocab_sp_morgan4096.model
+```
 
 ## Setup
 
@@ -45,52 +95,33 @@ Optional MCES metrics dependency:
 pip install -e .[mces]
 ```
 
-If you are initializing the repo with the upstream MolForge submodule:
+Initialize the upstream MolForge submodule:
 
 ```bash
 git submodule update --init --recursive
 ```
 
-## Expected Local Artifacts
+## Repository Layout
 
-Dataset side:
+- `src/mist/`: retained MIST encoder and benchmark data-loading code
+- `src/mist_molforge/`: integration layer for benchmark orchestration, chemistry helpers, metrics, and the MolForge adapter
+- `MolForge/`: upstream MolForge repository, tracked as a git submodule ([knu-lcbc/MolForge](https://github.com/knu-lcbc/MolForge))
+- `configs/`: MassSpecGym and CANOPUS benchmark configs
+- `checkpoints/`: MIST checkpoints, MolForge checkpoint, and SentencePiece models
 
-- `data/msg/...`
-- `data/canopus/...`
+## Benchmark Commands
 
-Each benchmark config expects processed files such as:
-
-- `labels.tsv`
-- split TSVs
-- `spec_files/*.ms`
-- precomputed subformula JSON files
-
-Checkpoint side:
-
-- `checkpoints/mist_msg.pt`
-- `checkpoints/mist_canopus.pt`
-- `checkpoints/decoder_molforge.pth`
-- `checkpoints/molforge_sp/combined_morgan4096_vocab_sp.model`
-- `checkpoints/molforge_sp/combined_smiles_vocab_sp_morgan4096.model`
-
-If you later add dataset-specific MolForge decoder checkpoints, set them in the
-config under `molforge.checkpoint`.
-
-## Canonical Benchmark Command
-
-After `pip install -e .`, the single canonical benchmark command is:
+After `pip install -e .`, the single canonical benchmark entrypoint is:
 
 ```bash
+# MassSpecGym
 mist-molforge-benchmark --config configs/spec2mol_benchmark_msg.yaml
-```
 
-For CANOPUS:
-
-```bash
+# CANOPUS (NPLIB1)
 mist-molforge-benchmark --config configs/spec2mol_benchmark_canopus.yaml
 ```
 
-Typical GPU usage examples:
+Typical GPU usage:
 
 ```bash
 mist-molforge-benchmark \
@@ -119,16 +150,23 @@ mist-molforge-benchmark \
 
 ## Config Structure
 
-The benchmark configs contain only four sections:
+The benchmark configs contain four sections:
 
-- `data.*`: dataset files
+- `data.*`: dataset files and directories
 - `mist_encoder.*`: MIST encoder architecture and checkpoint
 - `molforge.*`: MolForge submodule root, checkpoint, SentencePiece models, and decode settings
 - `evaluation.*`: split and optional sample cap
 
+## References
+
+- **MIST + MolForge:** Neo, N. K. N., Jing, L., Preston, N. Y. Z., Serene, K. X. T., & Shen, B. (2025). *One Small Step with Fingerprints, One Giant Leap for De Novo Molecule Generation from Mass Spectra.* AI4Mat-NeurIPS-2025 Workshop. [arXiv:2508.04180](https://arxiv.org/abs/2508.04180)
+- **DiffMS:** Bohde, M., Manjrekar, M., Wang, R., Ji, S., & Coley, C. W. (2025). *DiffMS: Diffusion Generation of Molecules Conditioned on Mass Spectra.* [arXiv:2502.09571](https://arxiv.org/abs/2502.09571)
+- **MIST:** Goldman, S., Bradshaw, J., Xin, J., & Coley, C. W. (2023). *A Machine Learning Model for Predicting Molecular Structures from Mass Spectra.* Nature Machine Intelligence, 5(11), 1245--1254.
+- **MolForge:** Ucak, U. S., Kang, T., Ko, J., & Lee, J. (2023). *MolForge.* [GitHub](https://github.com/knu-lcbc/MolForge)
+- **MassSpecGym:** Bushuiev, R. et al. (2024). *MassSpecGym: A Benchmark for the Discovery and Identification of Molecules.* NeurIPS 2024.
+
 ## Notes
 
 - The package entrypoint is `mist_molforge.benchmark:main`.
-- This repo does not bundle MSG or CANOPUS data.
-- Checkpoints are local runtime artifacts; whether to commit them, ignore them,
-  or move them to Git LFS is a separate repository policy decision.
+- This repo does not bundle MassSpecGym or CANOPUS data. See [Datasets](#datasets) above for download instructions.
+- Checkpoints are local runtime artifacts; whether to commit them, ignore them, or move them to Git LFS is a separate repository policy decision.
