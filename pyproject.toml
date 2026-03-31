@@ -7,7 +7,7 @@ name = "mist-molforge"
 readme = "README.md"
 version = "0.1.0"
 description = "Minimal MIST plus MolForge benchmark repository"
-authors = [{ name = "NVIDIA", email = "bionemofeedback@nvidia.com" }]
+authors = [{ name = "anonymous", email = "xxx@xxx" }]
 requires-python = ">=3.10"
 license = { file = "LICENSE/license_code.txt" }
 dependencies = [

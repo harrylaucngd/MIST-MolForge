@@ -1,9 +1,9 @@
 data:
-  datadir: "/home/liuhx25/orcd/pool/data/msg"
-  labels_file: "/home/liuhx25/orcd/pool/data/msg/labels.tsv"
-  split_file: "/home/liuhx25/orcd/pool/data/msg/split.tsv"
-  spec_folder: "/home/liuhx25/orcd/pool/data/msg/spec_files"
-  subform_folder: "/home/liuhx25/orcd/pool/data/msg/subformulae/default_subformulae"
+  datadir: "data/msg"
+  labels_file: "data/msg/labels.tsv"
+  split_file: "data/msg/split.tsv"
+  spec_folder: "data/msg/spec_files"
+  subform_folder: "data/msg/subformulae/default_subformulae"
 
 mist_encoder:
   checkpoint: "checkpoints/mist_msg.pt"

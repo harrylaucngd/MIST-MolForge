@@ -1,9 +1,9 @@
 data:
-  datadir: "/home/liuhx25/orcd/pool/data/canopus"
-  labels_file: "/home/liuhx25/orcd/pool/data/canopus/labels.tsv"
-  split_file: "/home/liuhx25/orcd/pool/data/canopus/splits/canopus_hplus_100_0.tsv"
-  spec_folder: "/home/liuhx25/orcd/pool/data/canopus/spec_files"
-  subform_folder: "/home/liuhx25/orcd/pool/data/canopus/subformulae/subformulae_default"
+  datadir: "data/canopus"
+  labels_file: "data/canopus/labels.tsv"
+  split_file: "data/canopus/splits/canopus_hplus_100_0.tsv"
+  spec_folder: "data/canopus/spec_files"
+  subform_folder: "data/canopus/subformulae/subformulae_default"
 
 mist_encoder:
   checkpoint: "checkpoints/mist_canopus.pt"
