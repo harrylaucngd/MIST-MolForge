@@ -115,7 +115,7 @@ def parse_args():
     )
     parser.add_argument("--split", type=str, default="test", choices=["val", "test"])
     parser.add_argument("--max-spectra", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=24)
     parser.add_argument(
         "--device",
         type=str,
